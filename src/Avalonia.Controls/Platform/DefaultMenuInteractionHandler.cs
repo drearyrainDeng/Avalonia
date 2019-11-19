@@ -273,7 +273,8 @@ namespace Avalonia.Controls.Platform
 
             if (item.IsTopLevel)
             {
-                if (item.Parent.SelectedItem?.IsSubMenuOpen == true)
+                if (item != item.Parent.SelectedItem &&
+                    item.Parent.SelectedItem?.IsSubMenuOpen == true)
                 {
                     item.Parent.SelectedItem.Close();
                     SelectItemAndAncestors(item);
@@ -336,7 +337,18 @@ namespace Avalonia.Controls.Platform
 
             if (e.MouseButton == MouseButton.Left && item?.HasSubMenu == true)
             {
-                Open(item, false);
+                if (item.IsSubMenuOpen)
+                {
+                    if (item.IsTopLevel)
+                    {
+                        CloseMenu(item);
+                    }
+                }
+                else
+                {
+                    Open(item, false);
+                }
+
                 e.Handled = true;
             }
         }
@@ -345,7 +357,7 @@ namespace Avalonia.Controls.Platform
         {
             var item = GetMenuItem(e.Source as IControl);
 
-            if (e.MouseButton == MouseButton.Left && item?.HasSubMenu == false)
+            if (e.InitialPressMouseButton == MouseButton.Left && item?.HasSubMenu == false)
             {
                 Click(item);
                 e.Handled = true;
@@ -362,11 +374,11 @@ namespace Avalonia.Controls.Platform
 
         protected internal virtual void RawInput(RawInputEventArgs e)
         {
-            var mouse = e as RawMouseEventArgs;
+            var mouse = e as RawPointerEventArgs;
 
-            if (mouse?.Type == RawMouseEventType.NonClientLeftButtonDown)
+            if (mouse?.Type == RawPointerEventType.NonClientLeftButtonDown)
             {
-                Menu.Close();
+                Menu?.Close();
             }
         }
 
@@ -385,7 +397,7 @@ namespace Avalonia.Controls.Platform
 
         protected internal virtual void WindowDeactivated(object sender, EventArgs e)
         {
-            Menu.Close();
+            Menu?.Close();
         }
 
         protected void Click(IMenuItem item)

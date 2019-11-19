@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using Avalonia.Controls.Platform.Surfaces;
@@ -15,14 +16,26 @@ namespace Avalonia.Skia
     /// <summary>
     /// Skia platform render interface.
     /// </summary>
-    public class PlatformRenderInterface : IPlatformRenderInterface
+    internal class PlatformRenderInterface : IPlatformRenderInterface
     {
+        private readonly ConcurrentDictionary<Typeface, GlyphTypefaceImpl> _glyphTypefaceCache =
+            new ConcurrentDictionary<Typeface, GlyphTypefaceImpl>();
+
+        private readonly ICustomSkiaGpu _customSkiaGpu;
+
         private GRContext GrContext { get; }
 
-        public IEnumerable<string> InstalledFontNames => SKFontManager.Default.FontFamilies;
-
-        public PlatformRenderInterface()
+        public PlatformRenderInterface(ICustomSkiaGpu customSkiaGpu)
         {
+            if (customSkiaGpu != null)
+            {
+                _customSkiaGpu = customSkiaGpu;
+
+                GrContext = _customSkiaGpu.GrContext;
+
+                return;
+            }
+
             var gl = AvaloniaLocator.Current.GetService<IWindowingPlatformGlFeature>();
             if (gl != null)
             {
@@ -32,23 +45,29 @@ namespace Avalonia.Skia
                     ? GRGlInterface.AssembleGlInterface((_, proc) => display.GlInterface.GetProcAddress(proc))
                     : GRGlInterface.AssembleGlesInterface((_, proc) => display.GlInterface.GetProcAddress(proc)))
                 {
-                    
                     GrContext = GRContext.Create(GRBackend.OpenGL, iface);
                 }
             }
         }
-        
+
         /// <inheritdoc />
         public IFormattedTextImpl CreateFormattedText(
             string text,
             Typeface typeface,
+            double fontSize,
             TextAlignment textAlignment,
             TextWrapping wrapping,
             Size constraint,
             IReadOnlyList<FormattedTextStyleSpan> spans)
         {
-            return new FormattedTextImpl(text, typeface, textAlignment, wrapping, constraint, spans);
+            return new FormattedTextImpl(text, typeface,fontSize, textAlignment, wrapping, constraint, spans);
         }
+
+        public IGeometryImpl CreateEllipseGeometry(Rect rect) => new EllipseGeometryImpl(rect);
+
+        public IGeometryImpl CreateLineGeometry(Point p1, Point p2) => new LineGeometryImpl(p1, p2);
+
+        public IGeometryImpl CreateRectangleGeometry(Rect rect) => new RectangleGeometryImpl(rect);
 
         /// <inheritdoc />
         public IStreamGeometryImpl CreateStreamGeometry()
@@ -95,16 +114,25 @@ namespace Avalonia.Skia
                 Width = size.Width,
                 Height = size.Height,
                 Dpi = dpi,
-                DisableTextLcdRendering = false,
-                GrContext = GrContext
+                DisableTextLcdRendering = false
             };
-            
+
             return new SurfaceRenderTarget(createInfo);
         }
 
         /// <inheritdoc />
-        public virtual IRenderTarget CreateRenderTarget(IEnumerable<object> surfaces)
+        public IRenderTarget CreateRenderTarget(IEnumerable<object> surfaces)
         {
+            if (_customSkiaGpu != null)
+            {
+                ICustomSkiaRenderTarget customRenderTarget = _customSkiaGpu.TryCreateRenderTarget(surfaces);
+
+                if (customRenderTarget != null)
+                {
+                    return new CustomRenderTarget(customRenderTarget);
+                }
+            }
+
             foreach (var surface in surfaces)
             {
                 if (surface is IGlPlatformSurface glSurface && GrContext != null)
@@ -125,6 +153,11 @@ namespace Avalonia.Skia
         public IWriteableBitmapImpl CreateWriteableBitmap(PixelSize size, Vector dpi, PixelFormat? format = null)
         {
             return new WriteableBitmapImpl(size, dpi, format);
+        }
+
+        public IGlyphTypefaceImpl CreateGlyphTypeface(Typeface typeface)
+        {
+            return _glyphTypefaceCache.GetOrAdd(typeface, new GlyphTypefaceImpl(typeface));
         }
     }
 }

@@ -1,27 +1,47 @@
 // Copyright (c) The Avalonia Project. All rights reserved.
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
-using System;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Portable.Xaml;
+using Avalonia.Interactivity;
 using Xunit;
 
 namespace Avalonia.Markup.Xaml.UnitTests.Xaml
 {
-    public class EventTests
+    public class EventTests : XamlTestBase
     {
         [Fact]
-        public void Event_Is_Attached()
+        public void Event_Is_Assigned()
         {
             var xaml = @"<Button xmlns='https://github.com/avaloniaui' Click='OnClick'/>";
             var loader = new AvaloniaXamlLoader();
             var target = new MyButton();
 
             loader.Load(xaml, rootInstance: target);
-            RaiseClick(target);
 
-            Assert.True(target.Clicked);
+            target.RaiseEvent(new RoutedEventArgs
+            {
+                RoutedEvent = Button.ClickEvent,
+            });
+
+            Assert.True(target.WasClicked);
+        }
+
+        [Fact]
+        public void Attached_Event_Is_Assigned()
+        {
+            var xaml = @"<Button xmlns='https://github.com/avaloniaui' Gestures.Tapped='OnTapped'/>";
+            var loader = new AvaloniaXamlLoader();
+            var target = new MyButton();
+
+            loader.Load(xaml, rootInstance: target);
+
+            target.RaiseEvent(new RoutedEventArgs
+            {
+                RoutedEvent = Gestures.TappedEvent,
+            });
+
+            Assert.True(target.WasTapped);
         }
 
         [Fact]
@@ -31,36 +51,16 @@ namespace Avalonia.Markup.Xaml.UnitTests.Xaml
             var loader = new AvaloniaXamlLoader();
             var target = new MyButton();
 
-            Assert.Throws<XamlObjectWriterException>(() => loader.Load(xaml, rootInstance: target));
+            XamlTestHelpers.AssertThrowsXamlException(() => loader.Load(xaml, rootInstance: target));
         }
 
-        [Fact]
-        public void Exception_Is_Not_Thrown_If_Event_Not_Found_In_Design_Mode()
+        public class MyButton : Button
         {
-            var xaml = @"<Button xmlns='https://github.com/avaloniaui' Click='NotFound'/>";
-            var loader = new AvaloniaXamlLoader { IsDesignMode = true };
-            var target = new MyButton();
+            public bool WasClicked { get; private set; }
+            public bool WasTapped { get; private set; }
 
-            loader.Load(xaml, rootInstance: target);
-        }
-
-        private void RaiseClick(MyButton target)
-        {
-            target.RaiseEvent(new KeyEventArgs
-            {
-                RoutedEvent = Button.KeyDownEvent,
-                Key = Key.Enter,
-            });
-        }
-
-        class MyButton : Button
-        {
-            public bool Clicked { get; private set; }
-
-            public void OnClick(object sender, EventArgs e)
-            {
-                Clicked = true;
-            }
+            public void OnClick(object sender, RoutedEventArgs e) => WasClicked = true;
+            public void OnTapped(object sender, RoutedEventArgs e) => WasTapped = true;
         }
     }
 }

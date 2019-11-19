@@ -1,7 +1,7 @@
 // Copyright (c) The Avalonia Project. All rights reserved.
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using Avalonia.Media;
 using SkiaSharp;
 
@@ -12,87 +12,36 @@ namespace Avalonia.Skia
     /// </summary>
     internal static class TypefaceCache
     {
-        public static SKTypeface Default = CreateDefaultTypeface();
-        static readonly Dictionary<string, Dictionary<FontKey, SKTypeface>> Cache = new Dictionary<string, Dictionary<FontKey, SKTypeface>>();
+        private static readonly ConcurrentDictionary<string, ConcurrentDictionary<FontKey, TypefaceCollectionEntry>> s_cache =
+            new ConcurrentDictionary<string, ConcurrentDictionary<FontKey, TypefaceCollectionEntry>>();
 
-        struct FontKey
+        public static TypefaceCollectionEntry Get(FontFamily fontFamily, FontWeight fontWeight, FontStyle fontStyle)
         {
-            public readonly SKFontStyleSlant Slant;
-            public readonly SKFontStyleWeight Weight;
-
-            public FontKey(SKFontStyleWeight weight, SKFontStyleSlant slant)
+            if (fontFamily.Key != null)
             {
-                Slant = slant;
-                Weight = weight;
+                return SKTypefaceCollectionCache.GetOrAddTypefaceCollection(fontFamily)
+                    .Get(fontFamily.Name, fontWeight, fontStyle);
             }
 
-            public override int GetHashCode()
-            {
-                int hash = 17;
-                hash = hash * 31 + (int)Slant;
-                hash = hash * 31 + (int)Weight;
+            var typefaceCollection = s_cache.GetOrAdd(fontFamily.Name, new ConcurrentDictionary<FontKey, TypefaceCollectionEntry>());
 
-                return hash;
+            var key = new FontKey(fontWeight, fontStyle);
+
+            if (typefaceCollection.TryGetValue(key, out var entry))
+            {
+                return entry;
             }
 
-            public override bool Equals(object other)
-            {
-                return other is FontKey ? Equals((FontKey)other) : false;
-            }
+            var skTypeface = SKTypeface.FromFamilyName(fontFamily.Name, (SKFontStyleWeight)fontWeight,
+                                 SKFontStyleWidth.Normal, (SKFontStyleSlant)fontStyle) ?? SKTypeface.Default;
 
-            public bool Equals(FontKey other)
-            {
-                return Slant == other.Slant &&
-                       Weight == other.Weight;
-            }
+            var typeface = new Typeface(fontFamily.Name, fontWeight, fontStyle);
 
-            // Equals and GetHashCode ommitted
+            entry = new TypefaceCollectionEntry(typeface, skTypeface);
+
+            typefaceCollection[key] = entry;
+
+            return entry;
         }
-
-        private static SKTypeface CreateDefaultTypeface()
-        {
-            var defaultTypeface = SKTypeface.FromFamilyName(FontFamily.Default.Name) ?? SKTypeface.FromFamilyName(null);
-
-            return defaultTypeface;
-        }
-
-        private static SKTypeface GetTypeface(string name, FontKey key)
-        {
-            var familyKey = name;
-
-            if (!Cache.TryGetValue(familyKey, out var entry))
-            {
-                Cache[familyKey] = entry = new Dictionary<FontKey, SKTypeface>();
-            }
-
-            if (!entry.TryGetValue(key, out var typeface))
-            {
-                typeface = SKTypeface.FromFamilyName(familyKey, key.Weight, SKFontStyleWidth.Normal, key.Slant)
-                           ?? Default;
-
-                entry[key] = typeface;
-            }
-
-            return typeface;
-        }
-
-        public static SKTypeface GetTypeface(string name, FontStyle style, FontWeight weight)
-        {
-            SKFontStyleSlant skStyle = SKFontStyleSlant.Upright;
-
-            switch (style)
-            {
-                case FontStyle.Italic:
-                    skStyle = SKFontStyleSlant.Italic;
-                    break;
-
-                case FontStyle.Oblique:
-                    skStyle = SKFontStyleSlant.Oblique;
-                    break;
-            }
-
-            return GetTypeface(name, new FontKey((SKFontStyleWeight)weight, skStyle));
-        }
-
     }
 }

@@ -9,17 +9,31 @@ namespace Avalonia.UnitTests
 {
     public class MockPlatformRenderInterface : IPlatformRenderInterface
     {
-        public IEnumerable<string> InstalledFontNames => new string[0];
-
         public IFormattedTextImpl CreateFormattedText(
             string text,
             Typeface typeface,
+            double fontSize,
             TextAlignment textAlignment,
             TextWrapping wrapping,
             Size constraint,
             IReadOnlyList<FormattedTextStyleSpan> spans)
         {
             return Mock.Of<IFormattedTextImpl>();
+        }
+
+        public IGeometryImpl CreateEllipseGeometry(Rect rect)
+        {
+            return Mock.Of<IGeometryImpl>();
+        }
+
+        public IGeometryImpl CreateLineGeometry(Point p1, Point p2)
+        {
+            return Mock.Of<IGeometryImpl>();
+        }
+
+        public IGeometryImpl CreateRectangleGeometry(Rect rect)
+        {
+            return Mock.Of<IGeometryImpl>();
         }
 
         public IRenderTarget CreateRenderTarget(IEnumerable<object> surfaces)
@@ -63,6 +77,11 @@ namespace Avalonia.UnitTests
             int stride)
         {
             throw new NotImplementedException();
+        }
+
+        public IGlyphTypefaceImpl CreateGlyphTypeface(Typeface typeface)
+        {
+            return Mock.Of<IGlyphTypefaceImpl>();
         }
     }
 }

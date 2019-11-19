@@ -119,6 +119,11 @@ namespace Avalonia.Rendering.SceneGraph
                 throw new ObjectDisposedException("Visual node for {node.Visual}");
             }
 
+            if (child.Parent != this)
+            {
+                throw new AvaloniaInternalException("VisualNode added to wrong parent.");
+            }
+
             EnsureChildrenCreated();
             _children.Add(child);
         }
@@ -155,6 +160,11 @@ namespace Avalonia.Rendering.SceneGraph
                 throw new ObjectDisposedException("Visual node for {node.Visual}");
             }
 
+            if (node.Parent != this)
+            {
+                throw new AvaloniaInternalException("VisualNode added to wrong parent.");
+            }
+
             EnsureChildrenCreated();
             _children[index] = node;
         }
@@ -173,6 +183,42 @@ namespace Avalonia.Rendering.SceneGraph
         }
 
         /// <summary>
+        /// Sorts the <see cref="Children"/> collection according to the order of the visual's
+        /// children and their z-index.
+        /// </summary>
+        /// <param name="scene">The scene that the node is a part of.</param>
+        public void SortChildren(Scene scene)
+        {
+            if (_children == null || _children.Count <= 1)
+            {
+                return;
+            }
+
+            var keys = new List<long>(Visual.VisualChildren.Count);
+
+            for (var i = 0; i < Visual.VisualChildren.Count; ++i)
+            {
+                var child = Visual.VisualChildren[i];
+                var zIndex = child.ZIndex;
+                keys.Add(((long)zIndex << 32) + i);
+            }
+
+            keys.Sort();
+            _children.Clear();
+
+            foreach (var i in keys)
+            {
+                var child = Visual.VisualChildren[(int)(i & 0xffffffff)];
+                var node = scene.FindNode(child);
+
+                if (node != null)
+                {
+                    _children.Add(node);
+                }
+            }
+        }
+
+        /// <summary>
         /// Removes items in the <see cref="Children"/> collection from the specified index
         /// to the end.
         /// </summary>
@@ -182,7 +228,7 @@ namespace Avalonia.Rendering.SceneGraph
             if (first < _children?.Count)
             {
                 EnsureChildrenCreated();
-                for (int i = first; i < _children.Count - first; i++)
+                for (int i = first; i < _children.Count; i++)
                 {
                     _children[i].Dispose();
                 }
@@ -236,7 +282,7 @@ namespace Avalonia.Rendering.SceneGraph
         {
             foreach (var operation in DrawOperations)
             {
-                if (operation.Item.HitTest(p))
+                if (operation?.Item?.HitTest(p) == true)
                 {
                     return true;
                 }

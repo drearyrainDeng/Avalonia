@@ -122,75 +122,6 @@ namespace Avalonia.Controls.UnitTests
         }
 
         [Fact]
-        public void Show_Should_Add_Window_To_OpenWindows()
-        {
-            using (UnitTestApplication.Start(TestServices.StyledWindow))
-            {
-                ClearOpenWindows();
-                var window = new Window();
-
-                window.Show();
-
-                Assert.Equal(new[] { window }, Application.Current.Windows);
-            }
-        }
-
-        [Fact]
-        public void Window_Should_Be_Added_To_OpenWindows_Only_Once()
-        {
-            using (UnitTestApplication.Start(TestServices.StyledWindow))
-            {
-                ClearOpenWindows();
-                var window = new Window();
-
-                window.Show();
-                window.Show();
-                window.IsVisible = true;
-
-                Assert.Equal(new[] { window }, Application.Current.Windows);
-
-                window.Close();
-            }
-        }
-
-        [Fact]
-        public void Close_Should_Remove_Window_From_OpenWindows()
-        {
-            using (UnitTestApplication.Start(TestServices.StyledWindow))
-            {
-                ClearOpenWindows();
-                var window = new Window();
-
-                window.Show();
-                window.Close();
-
-                Assert.Empty(Application.Current.Windows);
-            }
-        }
-
-        [Fact]
-        public void Impl_Closing_Should_Remove_Window_From_OpenWindows()
-        {
-            var windowImpl = new Mock<IWindowImpl>();
-            windowImpl.SetupProperty(x => x.Closed);
-            windowImpl.Setup(x => x.Scaling).Returns(1);
-
-            var services = TestServices.StyledWindow.With(
-                windowingPlatform: new MockWindowingPlatform(() => windowImpl.Object));
-
-            using (UnitTestApplication.Start(services))
-            {
-                ClearOpenWindows();
-                var window = new Window();
-
-                window.Show();
-                windowImpl.Object.Closed();
-
-                Assert.Empty(Application.Current.Windows);
-            }
-        }
-
-        [Fact]
         public void Closing_Should_Only_Be_Invoked_Once()
         {
             using (UnitTestApplication.Start(TestServices.StyledWindow))
@@ -293,16 +224,60 @@ namespace Avalonia.Controls.UnitTests
         }
 
         [Fact]
+        public void Calling_Show_On_Closed_Window_Should_Throw()
+        {
+            using (UnitTestApplication.Start(TestServices.StyledWindow))
+            {
+                var windowImpl = Mock.Of<IWindowImpl>(x => x.Scaling == 1);
+                var target = new Window(windowImpl);
+
+                target.Show();
+                target.Close();
+
+                var openedRaised = false;
+                target.Opened += (s, e) => openedRaised = true;
+
+                var ex = Assert.Throws<InvalidOperationException>(() => target.Show());
+                Assert.Equal("Cannot re-show a closed window.", ex.Message);
+                Assert.False(openedRaised);
+            }
+        }
+
+        [Fact]
+        public async Task Calling_ShowDialog_On_Closed_Window_Should_Throw()
+        {
+            using (UnitTestApplication.Start(TestServices.StyledWindow))
+            {
+                var parent = new Mock<IWindowImpl>();
+                var windowImpl = new Mock<IWindowImpl>();
+                windowImpl.SetupProperty(x => x.Closed);
+                windowImpl.Setup(x => x.Scaling).Returns(1);
+
+                var target = new Window(windowImpl.Object);
+                var task = target.ShowDialog<bool>(parent.Object);
+
+                windowImpl.Object.Closed();
+                await task;
+
+                var openedRaised = false;
+                target.Opened += (s, e) => openedRaised = true;
+
+                var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => target.ShowDialog<bool>(parent.Object));
+                Assert.Equal("Cannot re-show a closed window.", ex.Message);
+                Assert.False(openedRaised);
+            }
+        }
+
+        [Fact]
         public void Window_Should_Be_Centered_When_WindowStartupLocation_Is_CenterScreen()
         {
-            var screen1 = new Mock<Screen>(new PixelRect(new PixelSize(1920, 1080)), new PixelRect(new PixelSize(1920, 1040)), true);
-            var screen2 = new Mock<Screen>(new PixelRect(new PixelSize(1366, 768)), new PixelRect(new PixelSize(1366, 728)), false);
+            var screen1 = new Mock<Screen>(1.0, new PixelRect(new PixelSize(1920, 1080)), new PixelRect(new PixelSize(1920, 1040)), true);
+            var screen2 = new Mock<Screen>(1.0, new PixelRect(new PixelSize(1366, 768)), new PixelRect(new PixelSize(1366, 728)), false);
 
             var screens = new Mock<IScreenImpl>();
             screens.Setup(x => x.AllScreens).Returns(new Screen[] { screen1.Object, screen2.Object });
 
-            var windowImpl = new Mock<IWindowImpl>();
-            windowImpl.SetupProperty(x => x.Position);
+            var windowImpl = MockWindowingPlatform.CreateWindowMock();
             windowImpl.Setup(x => x.ClientSize).Returns(new Size(800, 480));
             windowImpl.Setup(x => x.Scaling).Returns(1);
             windowImpl.Setup(x => x.Screen).Returns(screens.Object);
@@ -326,14 +301,12 @@ namespace Avalonia.Controls.UnitTests
         [Fact]
         public void Window_Should_Be_Centered_Relative_To_Owner_When_WindowStartupLocation_Is_CenterOwner()
         {
-            var parentWindowImpl = new Mock<IWindowImpl>();
-            parentWindowImpl.SetupProperty(x => x.Position);
+            var parentWindowImpl = MockWindowingPlatform.CreateWindowMock();
             parentWindowImpl.Setup(x => x.ClientSize).Returns(new Size(800, 480));
             parentWindowImpl.Setup(x => x.MaxClientSize).Returns(new Size(1920, 1080));
             parentWindowImpl.Setup(x => x.Scaling).Returns(1);
 
-            var windowImpl = new Mock<IWindowImpl>();
-            windowImpl.SetupProperty(x => x.Position);
+            var windowImpl = MockWindowingPlatform.CreateWindowMock();
             windowImpl.Setup(x => x.ClientSize).Returns(new Size(320, 200));
             windowImpl.Setup(x => x.MaxClientSize).Returns(new Size(1920, 1080));
             windowImpl.Setup(x => x.Scaling).Returns(1);
@@ -374,13 +347,6 @@ namespace Avalonia.Controls.UnitTests
             return Mock.Of<IWindowImpl>(x =>
                 x.Scaling == 1 &&
                 x.CreateRenderer(It.IsAny<IRenderRoot>()) == renderer.Object);
-        }
-
-        private void ClearOpenWindows()
-        {
-            // HACK: We really need a decent way to have "statics" that can be scoped to
-            // AvaloniaLocator scopes.
-            Application.Current.Windows.Clear();
         }
     }
 }

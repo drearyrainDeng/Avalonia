@@ -19,6 +19,7 @@ namespace Avalonia.Utilities
         /// </summary>
         /// <typeparam name="TTarget">The type of the target.</typeparam>
         /// <typeparam name="TEventArgs">The type of the event arguments.</typeparam>
+        /// <typeparam name="TSubscriber">The type of the subscriber.</typeparam>
         /// <param name="target">The event source.</param>
         /// <param name="eventName">The name of the event.</param>
         /// <param name="subscriber">The subscriber.</param>
@@ -40,6 +41,7 @@ namespace Avalonia.Utilities
         /// Unsubscribes from an event.
         /// </summary>
         /// <typeparam name="TEventArgs">The type of the event arguments.</typeparam>
+        /// <typeparam name="TSubscriber">The type of the subscriber.</typeparam>
         /// <param name="target">The event source.</param>
         /// <param name="eventName">The name of the event.</param>
         /// <param name="subscriber">The subscriber.</param>
@@ -140,10 +142,12 @@ namespace Avalonia.Utilities
                     _data = ndata;
                 }
 
+                MethodInfo method = s.Method;
+
                 var subscriber = (TSubscriber)s.Target;
-                if (!s_Callers.TryGetValue(s.Method, out var caller))
-                    s_Callers[s.Method] = caller =
-                        (CallerDelegate)Delegate.CreateDelegate(typeof(CallerDelegate), null, s.Method);
+                if (!s_Callers.TryGetValue(method, out var caller))
+                    s_Callers[method] = caller =
+                        (CallerDelegate)Delegate.CreateDelegate(typeof(CallerDelegate), null, method);
                 _data[_count] = new Descriptor
                 {
                     Caller = caller,
@@ -159,9 +163,8 @@ namespace Avalonia.Utilities
                 for (int c = 0; c < _count; ++c)
                 {
                     var reference = _data[c].Subscriber;
-                    TSubscriber instance;
 
-                    if (reference != null && reference.TryGetTarget(out instance) && instance == s)
+                    if (reference != null && reference.TryGetTarget(out TSubscriber instance) && Equals(instance, s.Target))
                     {
                         _data[c] = default;
                         removed = true;

@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
 using System;
+using System.Collections.Generic;
 using Avalonia.Native.Interop;
 using Avalonia.Platform;
 
@@ -18,7 +19,7 @@ namespace Avalonia.Native
 
         public int ScreenCount => _native.GetScreenCount();
 
-        public Screen[] AllScreens
+        public IReadOnlyList<Screen> AllScreens
         {
             get
             {
@@ -30,6 +31,7 @@ namespace Avalonia.Native
                     var screen = _native.GetScreen(i);
 
                     result[i] = new Screen(
+                        screen.PixelDensity,
                         screen.Bounds.ToAvaloniaPixelRect(),
                         screen.WorkingArea.ToAvaloniaPixelRect(),
                         screen.Primary);

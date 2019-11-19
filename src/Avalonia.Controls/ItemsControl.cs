@@ -37,6 +37,12 @@ namespace Avalonia.Controls
             AvaloniaProperty.RegisterDirect<ItemsControl, IEnumerable>(nameof(Items), o => o.Items, (o, v) => o.Items = v);
 
         /// <summary>
+        /// Defines the <see cref="ItemCount"/> property.
+        /// </summary>
+        public static readonly DirectProperty<ItemsControl, int> ItemCountProperty =
+            AvaloniaProperty.RegisterDirect<ItemsControl, int>(nameof(ItemCount), o => o.ItemCount);
+
+        /// <summary>
         /// Defines the <see cref="ItemsPanel"/> property.
         /// </summary>
         public static readonly StyledProperty<ITemplate<IPanel>> ItemsPanelProperty =
@@ -48,13 +54,8 @@ namespace Avalonia.Controls
         public static readonly StyledProperty<IDataTemplate> ItemTemplateProperty =
             AvaloniaProperty.Register<ItemsControl, IDataTemplate>(nameof(ItemTemplate));
 
-        /// <summary>
-        /// Defines the <see cref="MemberSelector"/> property.
-        /// </summary>
-        public static readonly StyledProperty<IMemberSelector> MemberSelectorProperty =
-            AvaloniaProperty.Register<ItemsControl, IMemberSelector>(nameof(MemberSelector));
-
         private IEnumerable _items = new AvaloniaList<object>();
+        private int _itemCount;
         private IItemContainerGenerator _itemContainerGenerator;
         private IDisposable _itemsCollectionChangedSubscription;
 
@@ -63,8 +64,8 @@ namespace Avalonia.Controls
         /// </summary>
         static ItemsControl()
         {
-            ItemsProperty.Changed.AddClassHandler<ItemsControl>(x => x.ItemsChanged);
-            ItemTemplateProperty.Changed.AddClassHandler<ItemsControl>(x => x.ItemTemplateChanged);
+            ItemsProperty.Changed.AddClassHandler<ItemsControl>((x, e) => x.ItemsChanged(e));
+            ItemTemplateProperty.Changed.AddClassHandler<ItemsControl>((x, e) => x.ItemTemplateChanged(e));
         }
 
         /// <summary>
@@ -110,10 +111,13 @@ namespace Avalonia.Controls
             set { SetAndRaise(ItemsProperty, ref _items, value); }
         }
 
+        /// <summary>
+        /// Gets the number of items in <see cref="Items"/>.
+        /// </summary>
         public int ItemCount
         {
-            get;
-            private set;
+            get => _itemCount;
+            private set => SetAndRaise(ItemCountProperty, ref _itemCount, value);
         }
 
         /// <summary>
@@ -132,15 +136,6 @@ namespace Avalonia.Controls
         {
             get { return GetValue(ItemTemplateProperty); }
             set { SetValue(ItemTemplateProperty, value); }
-        }
-
-        /// <summary>
-        /// Selects a member from <see cref="Items"/> to use as the list item.
-        /// </summary>
-        public IMemberSelector MemberSelector
-        {
-            get { return GetValue(MemberSelectorProperty); }
-            set { SetValue(MemberSelectorProperty, value); }
         }
 
         /// <summary>
@@ -307,19 +302,6 @@ namespace Avalonia.Controls
         /// <param name="e">The details of the containers.</param>
         protected virtual void OnContainersRecycled(ItemContainerEventArgs e)
         {
-            var toRemove = new List<ILogical>();
-
-            foreach (var container in e.Containers)
-            {
-                // If the item is its own container, then it will be removed from the logical tree
-                // when it is removed from the Items collection.
-                if (container?.ContainerControl != container?.Item)
-                {
-                    toRemove.Add(container.ContainerControl);
-                }
-            }
-
-            LogicalChildren.RemoveAll(toRemove);
         }
 
         /// <summary>
@@ -377,6 +359,12 @@ namespace Avalonia.Controls
             UpdateItemCount();
             RemoveControlItemsFromLogicalChildren(oldValue);
             AddControlItemsToLogicalChildren(newValue);
+
+            if (Presenter != null)
+            {
+                Presenter.Items = newValue;
+            }
+
             SubscribeToItems(newValue);
         }
 
@@ -388,6 +376,8 @@ namespace Avalonia.Controls
         /// <param name="e">The event args.</param>
         protected virtual void ItemsCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
+            UpdateItemCount();
+
             switch (e.Action)
             {
                 case NotifyCollectionChangedAction.Add:
@@ -399,7 +389,7 @@ namespace Avalonia.Controls
                     break;
             }
 
-            UpdateItemCount();
+            Presenter?.ItemsChanged(e);
 
             var collection = sender as ICollection;
             PseudoClasses.Set(":empty", collection == null || collection.Count == 0);
@@ -507,18 +497,20 @@ namespace Avalonia.Controls
             bool wrap)
         {
             IInputElement result;
+            var c = from;
 
             do
             {
-                result = container.GetControl(direction, from, wrap);
+                result = container.GetControl(direction, c, wrap);
+                from = from ?? result;
 
                 if (result?.Focusable == true)
                 {
                     return result;
                 }
 
-                from = result;
-            } while (from != null);
+                c = result;
+            } while (c != null && c != from);
 
             return null;
         }

@@ -10,6 +10,7 @@ using Avalonia.Data;
 using Avalonia.Logging;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
+using Avalonia.Metadata;
 using Avalonia.Rendering;
 using Avalonia.Utilities;
 using Avalonia.VisualTree;
@@ -25,6 +26,7 @@ namespace Avalonia
     /// <see cref="IRenderer"/> to render the control. To traverse the visual tree, use the
     /// extension methods defined in <see cref="VisualExtensions"/>.
     /// </remarks>
+    [UsableDuringInitialization]
     public class Visual : StyledElement, IVisual
     {
         /// <summary>
@@ -109,6 +111,7 @@ namespace Avalonia
                 IsVisibleProperty,
                 OpacityProperty);
             RenderTransformProperty.Changed.Subscribe(RenderTransformChanged);
+            ZIndexProperty.Changed.Subscribe(ZIndexChanged);
         }
 
         /// <summary>
@@ -290,29 +293,6 @@ namespace Avalonia
         }
 
         /// <summary>
-        /// Returns a transform that transforms the visual's coordinates into the coordinates
-        /// of the specified <paramref name="visual"/>.
-        /// </summary>
-        /// <param name="visual">The visual to translate the coordinates to.</param>
-        /// <returns>
-        /// A <see cref="Matrix"/> containing the transform or null if the visuals don't share a
-        /// common ancestor.
-        /// </returns>
-        public Matrix? TransformToVisual(IVisual visual)
-        {
-            var common = this.FindCommonVisualAncestor(visual);
-
-            if (common != null)
-            {
-                var thisOffset = GetOffsetFrom(common, this);
-                var thatOffset = GetOffsetFrom(common, visual);
-                return -thatOffset * thisOffset;
-            }
-
-            return null;
-        }
-
-        /// <summary>
         /// Indicates that a property change should cause <see cref="InvalidateVisual"/> to be
         /// called.
         /// </summary>
@@ -366,6 +346,12 @@ namespace Avalonia
             }
         }
 
+        protected override void LogicalChildrenCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            base.LogicalChildrenCollectionChanged(sender, e);
+            VisualRoot?.Renderer?.RecalculateChildren(this);
+        }
+
         /// <summary>
         /// Calls the <see cref="OnAttachedToVisualTree(VisualTreeAttachmentEventArgs)"/> method 
         /// for this control and all of its visual descendants.
@@ -373,7 +359,7 @@ namespace Avalonia
         /// <param name="e">The event args.</param>
         protected virtual void OnAttachedToVisualTreeCore(VisualTreeAttachmentEventArgs e)
         {
-            Logger.Verbose(LogArea.Visual, this, "Attached to visual tree");
+            Logger.TryGet(LogEventLevel.Verbose)?.Log(LogArea.Visual, this, "Attached to visual tree");
 
             _visualRoot = e.Root;
 
@@ -402,7 +388,7 @@ namespace Avalonia
         /// <param name="e">The event args.</param>
         protected virtual void OnDetachedFromVisualTreeCore(VisualTreeAttachmentEventArgs e)
         {
-            Logger.Verbose(LogArea.Visual, this, "Detached from visual tree");
+            Logger.TryGet(LogEventLevel.Verbose)?.Log(LogArea.Visual, this, "Detached from visual tree");
 
             _visualRoot = null;
 
@@ -467,8 +453,7 @@ namespace Avalonia
                     return;
                 }
 
-                Logger.Log(
-                    LogEventLevel.Warning,
+                Logger.TryGet(LogEventLevel.Warning)?.Log(
                     LogArea.Binding,
                     this,
                     "Error in binding to {Target}.{Property}: {Message}",
@@ -476,45 +461,6 @@ namespace Avalonia
                     property,
                     e.Message);
             }
-        }
-
-        /// <summary>
-        /// Gets the visual offset from the specified ancestor.
-        /// </summary>
-        /// <param name="ancestor">The ancestor visual.</param>
-        /// <param name="visual">The visual.</param>
-        /// <returns>The visual offset.</returns>
-        private static Matrix GetOffsetFrom(IVisual ancestor, IVisual visual)
-        {
-            var result = Matrix.Identity;
-
-            while (visual != ancestor)
-            {
-                if (visual.RenderTransform?.Value != null)
-                {
-                    var origin = visual.RenderTransformOrigin.ToPixels(visual.Bounds.Size);
-                    var offset = Matrix.CreateTranslation(origin);
-                    var renderTransform = (-offset) * visual.RenderTransform.Value * (offset);
-
-                    result *= renderTransform;
-                }
-
-                var topLeft = visual.Bounds.TopLeft;
-
-                if (topLeft != default)
-                {
-                    result *= Matrix.CreateTranslation(topLeft);
-                }
-
-                visual = visual.VisualParent;
-
-                if (visual == null)
-                {
-                    throw new ArgumentException("'visual' is not a descendant of 'ancestor'.");
-                }
-            }
-
-            return result;
         }
 
         /// <summary>
@@ -559,6 +505,18 @@ namespace Avalonia
             {
                 throw new InvalidOperationException("The control already has a visual parent.");
             }
+        }
+
+        /// <summary>
+        /// Called when the <see cref="ZIndex"/> property changes on any control.
+        /// </summary>
+        /// <param name="e">The event args.</param>
+        private static void ZIndexChanged(AvaloniaPropertyChangedEventArgs e)
+        {
+            var sender = e.Sender as IVisual;
+            var parent = sender?.VisualParent;
+            sender?.InvalidateVisual();
+            parent?.VisualRoot?.Renderer?.RecalculateChildren(parent);
         }
 
         /// <summary>
